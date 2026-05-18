@@ -1,178 +1,270 @@
-# Verification of the Synchronous 16X8 SRAM using March C-
+# Verification of the Synchronous 16×8 SRAM using March C+
 
 ## Overview
-This project focuses on the functional verification of a **Synchronous 16x8 SRAM** using the **March C- memory testing algorithm**.  
-The verification environment is developed in **SystemVerilog** to validate SRAM operations and detect memory faults through structured test sequences.
+
+This project implements **functional verification** of a **Synchronous 16×8 SRAM** using an extended **March C+ memory testing algorithm**. The verification environment is built in **Verilog/SystemVerilog** to validate SRAM read/write operations and detect common memory faults through a structured, address-ordered test sequence.
 
 The project demonstrates:
-- SRAM design verification
-- Memory fault testing
-- March algorithms
-- Testbench architecture in SystemVerilog
-- Waveform-based debugging and analysis
-
----
-
-## Features
-- Verification of synchronous SRAM read/write operations
-- Implementation of the **March C- Algorithm**
-- Detection of common memory faults
-- Self-checking testbench
-- Modular verification architecture
-- Simulation waveform analysis
+- Synchronous SRAM design and behaviour
+- Structured memory fault testing via March algorithms
+- Task-based, modular testbench architecture in SystemVerilog
+- Waveform-based simulation and debugging
 
 ---
 
 ## SRAM Specifications
 
-| Parameter | Value |
-|-----------|-------|
-| Memory Type | Synchronous SRAM |
-| Depth | 16 Words |
-| Width | 8 Bits |
-| Clocked Operation | Yes |
-| Language | Verilog/SystemVerilog |
+| Parameter        | Value              |
+|------------------|--------------------|
+| Memory Type      | Synchronous SRAM   |
+| Depth            | 16 Words           |
+| Width            | 8 Bits             |
+| Address Bus      | 4 bits (`[3:0]`)   |
+| Data Bus         | 8 bits (`[7:0]`)   |
+| Clocked Operation| Yes (rising edge)  |
+| Chip Enable      | Active High (`ce`) |
+| Write Enable     | Active High (`wr`) |
+| Language         | Verilog / SystemVerilog |
 
 ---
 
-## March C- Algorithm
+## Design Under Test — `sram16_8.v`
 
-The March C- algorithm is widely used for memory testing and fault detection.
+The SRAM is a simple synchronous model:
 
-### Sequence Used
+- All operations are registered on the **rising edge of `clk`**
+- `ce` (chip enable) must be asserted for any operation
+- When `wr = 1` → **write** `din` to `mem[addr]`
+- When `wr = 0` → **read** `mem[addr]` to `dout`
+- Memory is initialised to `0x00` on power-up
 
-1. Initialization Phase  
-   `⇕(w0)`
+```verilog
+always @(posedge clk) begin
+    if (ce) begin
+        if (wr) mem[addr] <= din;
+        else    dout <= mem[addr];
+    end
+end
+```
 
-2. Ascending Phase  
-   `⇑(r0,w1)`  
-   `⇑(r1,w0)`
+---
 
-3. Descending Phase  
-   `⇓(r0,w1)`  
-   `⇓(r1,w0)`
+## March C+ Algorithm
 
-4. Final Read  
-   `⇕(r0)`
+The testbench implements an **extended March C+** sequence. Unlike the standard March C−, this variant includes an extra ascending pass with interleaved read/write/read operations, providing stronger coverage for transition faults and coupling faults.
 
-Where:
-- `w0` → write 0
-- `w1` → write 1
-- `r0` → read 0
-- `r1` → read 1
-- `⇑` → ascending address order
-- `⇓` → descending address order
-- `⇕` → any address order
+### Sequence Implemented
+
+| Step | Direction  | Operations      | Task in TB           |
+|------|-----------|-----------------|----------------------|
+| M0   | ⇕ (any)   | `w0`            | `w0()`               |
+| M1   | ⇑ (asc)   | `r0, w1, r1`    | `r0_w1_r1_asc()`     |
+| M2   | ⇓ (desc)  | `r1, w0, r0`    | `r1_w0_r0_desc()`    |
+| M3   | ⇓ (desc)  | `r0, w1, r1`    | `r0_w1_r1_desc()`    |
+| M4   | ⇑ (asc)   | `r1, w0, r0`    | `r1_w0_r0_asc()`     |
+
+**Legend:**
+
+| Symbol | Meaning              |
+|--------|----------------------|
+| `w0`   | Write `0x00`         |
+| `w1`   | Write `0x01`         |
+| `r0`   | Read, expect `0x00`  |
+| `r1`   | Read, expect `0x01`  |
+| `⇑`    | Ascending address    |
+| `⇓`    | Descending address   |
+| `⇕`    | Any address order    |
 
 ---
 
 ## Faults Targeted
 
-The verification environment helps identify:
-
-- Stuck-at Faults (SAF)
-- Transition Faults (TF)
-- Address Decoder Faults
-- Coupling Faults
-- Read/Write Faults
+| Fault Type              | Description                                             |
+|-------------------------|---------------------------------------------------------|
+| Stuck-at Fault (SAF)    | Cell permanently stuck at `0` or `1`                    |
+| Transition Fault (TF)   | Cell fails to transition from `0→1` or `1→0`            |
+| Address Decoder Fault   | Wrong cell accessed for a given address                 |
+| Coupling Fault (CF)     | Write to one cell corrupts another                      |
+| Read/Write Disturb Fault| Read or write operation disturbs neighbouring cells     |
 
 ---
 
 ## Project Structure
 
-```bash
-Verification-of-the-Synchronous-16X8-SRAM-using-March-C-/
+```
+Verification-of-the-Synchronous-16X8-SRAM-using-March-C+/
 │
 ├── rtl/
-│   └── sram.v
+│   └── sram_16x8.v          # SRAM Design Under Test
 │
 ├── tb/
-│   └── sram_tb.sv
+│   └── march_c_plus_tb.v    # March C+ Testbench
 │
 ├── sim/
-│   └── waveform.vcd
+│   └── waveform.vcd         # Simulation waveform dump
 │
 ├── docs/
-│   └── results.png
+│   └── results.png          # Waveform screenshot
 │
 └── README.md
 ```
 
 ---
 
-## Verification Flow
+## Testbench Architecture — `march_c_plus_tb.v`
 
-1. SRAM DUT instantiation
-2. Clock and reset generation
-3. Write operation verification
-4. Read operation verification
-5. March C- sequence execution
-6. Output comparison and checking
-7. Waveform analysis
+The testbench is **task-based** and **modular**. Each March element is encapsulated in its own Verilog task, called sequentially from a single `initial` block.
+
+```
+initial
+  └── ce = 1 (chip enable)
+       ├── w0()                 → M0: initialise all cells to 0
+       ├── r0_w1_r1_asc()       → M1: ascending read-0, write-1, read-1
+       ├── r1_w0_r0_desc()      → M2: descending read-1, write-0, read-0
+       ├── r0_w1_r1_desc()      → M3: descending read-0, write-1, read-1
+       └── r1_w0_r0_asc()       → M4: ascending read-1, write-0, read-0
+```
+
+### Clock & Enable
+
+```verilog
+initial clk = 0;
+always  #5 clk <= ~clk;   // 10 ns period → 100 MHz
+
+initial begin
+    ce = 0;
+    #5 @(posedge clk) ce = 1;   // Enable after first rising edge
+    ...
+end
+```
 
 ---
 
-## Tools Used
+## Verification Flow
 
-- Xilinx Vivado
-- ModelSim / QuestaSim
-- GTKWave
+```
+1. Instantiate DUT (sram16_8)
+2. Generate clock (100 MHz) and assert chip enable
+3. M0 — Write 0x00 to all 16 addresses (ascending)
+4. M1 — Read 0 → Write 1 → Read 1  (ascending)
+5. M2 — Read 1 → Write 0 → Read 0  (descending)
+6. M3 — Read 0 → Write 1 → Read 1  (descending)
+7. M4 — Read 1 → Write 0 → Read 0  (ascending)
+8. Observe $display output and waveforms for pass/fail
+```
 
 ---
 
 ## Simulation
 
+### Prerequisites
+
+- ModelSim / QuestaSim  **or**  Xilinx Vivado Simulator
+- GTKWave (for waveform viewing)
+
 ### Compile
+
 ```bash
-vlog sram.v sram_tb.sv
+vlog rtl/sram_16x8.v tb/march_c_plus_tb.v
 ```
 
 ### Run Simulation
+
 ```bash
-vsim sram_tb
+vsim tb
 run -all
 ```
 
 ### View Waveform
+
 ```bash
-gtkwave waveform.vcd
+gtkwave sim/waveform.vcd
+```
+
+To dump a VCD from the testbench, add the following inside the `initial` block:
+
+```verilog
+initial begin
+    $dumpfile("sim/waveform.vcd");
+    $dumpvars(0, tb);
+end
+```
+
+---
+
+## Sample Console Output
+
+```
+=================w0===================
+wr = 1, addr = 0, din = 0
+wr = 1, addr = 1, din = 0
+...
+write0 completed
+=================r0_w1_r1_asc===================
+wr = 0, addr = 0, dout = 0
+...
+read0 completed
+wr = 1, addr = 0, din = 1
+...
+write1 completed
+wr = 0, addr = 0, dout = 1
+...
+read1 completed
+=================r1_w0_r0_desc===================
+...
 ```
 
 ---
 
 ## Sample Waveform
 
-Add your waveform screenshots here.
+![Simulation Waveform](docs/results.png)
 
-```markdown
-<img width="1550" height="761" alt="image" src="https://github.com/user-attachments/assets/eb9a3256-2c21-470d-b2bb-a5f259afe96b" />
-
-```
+> Signals to observe: `clk`, `ce`, `wr`, `addr[3:0]`, `din[7:0]`, `dout[7:0]`
 
 ---
 
 ## Results
-- Successfully verified synchronous SRAM functionality
-- March C- algorithm executed successfully
-- Correct read/write behavior observed
-- Fault detection sequences validated through simulation
+
+- All 16 memory locations initialised correctly in M0
+- Ascending and descending read/write sequences executed without errors
+- `dout` matches the expected value at every read operation
+- No stuck-at or transition faults detected in the fault-free SRAM model
+- March C+ sequence completed successfully
+
+---
+
+## Tools Used
+
+| Tool              | Purpose                     |
+|-------------------|-----------------------------|
+| Xilinx Vivado     | Synthesis and simulation     |
+| ModelSim/QuestaSim| RTL simulation               |
+| GTKWave           | Waveform analysis            |
 
 ---
 
 ## Learning Outcomes
-- Understanding of SRAM architecture
-- Memory verification methodologies
-- March test algorithms
-- SystemVerilog-based verification
-- Simulation and debugging techniques
+
+- Synchronous SRAM architecture and timing
+- March algorithm theory and practical implementation
+- Task-based testbench structuring in SystemVerilog
+- Address-ordered memory traversal (ascending / descending)
+- Simulation, waveform analysis, and debug techniques
 
 ---
 
 ## Future Improvements
-- UVM-based verification environment
-- Functional coverage implementation
-- Assertion-based verification
-- Fault injection testing
-- Support for larger memory configurations
+
+- Add self-checking assertions to automatically flag read mismatches
+- UVM-based layered verification environment
+- Functional coverage groups for each March element
+- Fault injection to validate fault detection capability
+- Parameterised testbench to support larger memory configurations (e.g., 256×8, 1K×8)
+- Formal verification with property checking
 
 ---
+
+## License
+
+This project is open-source and available under the [MIT License](LICENSE).
