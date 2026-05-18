@@ -218,7 +218,7 @@ read1 completed
 
 ## Sample Waveform
 
-![Simulation Waveform](docs/results.png)
+![Simulation Waveform]()
 
 > Signals to observe: `clk`, `ce`, `wr`, `addr[3:0]`, `din[7:0]`, `dout[7:0]`
 
